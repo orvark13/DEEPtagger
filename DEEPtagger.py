@@ -3,6 +3,8 @@ import numpy as np
 from collections import Counter, defaultdict
 from itertools import count
 from time import time
+from datetime import datetime
+from pathlib import Path
 import argparse
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -41,7 +43,7 @@ class DEEPTagger():
 
         self.WORDS_LOOKUP = self.model.add_lookup_parameters((self.meta.nwords, self.meta.lstm_word_input_dim))
         self.CHARS_LOOKUP = self.model.add_lookup_parameters((self.meta.nchars, self.meta.lstm_char_input_dim))
-        #self.p_t1 = self.model.add_lookup_parameters((self.meta.ntags, self.meta.lstm_tags_input_dim))
+        self.p_t1 = self.model.add_lookup_parameters((self.meta.ntags, self.meta.lstm_tags_input_dim))  # ath. notað?
 
         # MLP on top of biLSTM outputs 100 -> 32 -> ntags
         self.pH = self.model.add_parameters((self.meta.n_hidden, self.meta.lstm_word_output_dim * 2))  # vocab-size, input-dim
@@ -157,13 +159,8 @@ def write_to_sheets():
     creds = ServiceAccountCredentials.from_json_keyfile_name('client_secret.json', scope)
     client = gspread.authorize(creds)
 
-    # Find a workbook by name and open the first sheet
-    # Make sure you use the right name here.
+    # Open a Google Sheet, by name.
     sheet = client.open("DEEPtagger: Experiments and results").sheet1
-
-    # Extract and print all of the values
-    # list_of_hashes = sheet.get_all_records()
-    # print(list_of_hashes)
 
     row = [logging_dict['epoch'], logging_dict['word_acc'], logging_dict['sent_acc'], logging_dict['known_acc'],
            logging_dict['unknown_acc'], logging_dict['ifd_set'], logging_dict['optimization'], logging_dict['min_freq'],
@@ -171,7 +168,6 @@ def write_to_sheets():
            logging_dict['learning_rate_min'], logging_dict['dynamic'], logging_dict['memory'], logging_dict['random_seed'],
            logging_dict['dropout'], logging_dict['seconds'], logging_dict['final']]
     sheet.insert_row(row, 2)
-
 
 
 def evaluate_on_dev():
@@ -214,13 +210,16 @@ def train_tagger(train):
             # Evaluate
             if i == len(train) - 1:
                 eval_values = evaluate_on_dev()
-                seconds = str(time() - epoch_start_time)
                 print("EVAL: tags {:.3%} sent {:.3%} knw {:.3%} unk {:.3%}".format(*eval_values))
-                logging_dict.update({'epoch': ITER+1, 'word_acc': eval_values[0], 'sent_acc': eval_values[1],
-                                     'known_acc': eval_values[2], 'unknown_acc': eval_values[3], 'seconds': seconds})
-                if ITER+1 == HP_NUM_EPOCHS:
-                    logging_dict['final':'X']
-                write_to_sheets()
+                secret_file = Path('./client_secret.json')  # The secret file giving access to the Google Sheet
+                if secret_file.is_file():
+                    seconds = str(time() - epoch_start_time)
+                    logging_dict.update({'epoch': ITER+1, 'word_acc': eval_values[0], 'sent_acc': eval_values[1],
+                                         'known_acc': eval_values[2], 'unknown_acc': eval_values[3],
+                                         'seconds': datetime.fromtimestamp(seconds).strftime("%d. %B %Y %I:%M:%S")})
+                    if ITER+1 == HP_NUM_EPOCHS:
+                        logging_dict['final'] = 'X'
+                    write_to_sheets()
 
         print("------- EPOCH {:^2} DONE -------".format(ITER))
         now_time = time()
@@ -240,6 +239,7 @@ def set_trainer(optimization, model):
         return dy.AdamTrainer(model)
     if optimization == 'RMSProp':
         return dy.RMSPropTrainer(model)
+
 
 meta = Meta()
 if __name__ == '__main__':
@@ -315,7 +315,7 @@ if __name__ == '__main__':
             chars.update(w)
             meta.wc[w] += 1
 
-    for sent in dev: # Also account for chars in dev, so there are no unknown characters.
+    for sent in dev:  # Also account for chars in dev, so there are no unknown characters.
         for w, _ in sent:
             chars.update(w)
 
@@ -338,4 +338,5 @@ if __name__ == '__main__':
 
     print("Sentences, train=", len(train), ", validation=", len(dev))
 
-    #print(tagger.tag_sent("Markarinn er tilbúinn í slaginn!".split()))
+
+    #print(tagger.tag_sent("Markarinn er tilbúinn í slaginn!".split())
