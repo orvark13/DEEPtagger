@@ -41,7 +41,7 @@ class DEEPTagger():
 
         self.WORDS_LOOKUP = self.model.add_lookup_parameters((self.meta.nwords, self.meta.lstm_word_input_dim))
         self.CHARS_LOOKUP = self.model.add_lookup_parameters((self.meta.nchars, self.meta.lstm_char_input_dim))
-        self.p_t1 = self.model.add_lookup_parameters((self.meta.ntags, self.meta.lstm_tags_input_dim))  # ath. notað?
+        #self.p_t1 = self.model.add_lookup_parameters((self.meta.ntags, self.meta.lstm_tags_input_dim))
 
         # MLP on top of biLSTM outputs 100 -> 32 -> ntags
         self.pH = self.model.add_parameters((self.meta.n_hidden, self.meta.lstm_word_output_dim * 2))  # vocab-size, input-dim
@@ -90,14 +90,14 @@ class DEEPTagger():
     def build_tagging_graph(self, words):
         dy.renew_cg()
 
-        # Initialize the RNNs
+        # Initialize the LSTMs
         f_init = self.fwdRNN.initial_state()
         b_init = self.bwdRNN.initial_state()
 
         cf_init = self.cFwdRNN.initial_state()
         cb_init = self.cBwdRNN.initial_state()
 
-        # Get the word vectors, a 128-dim vector expression for each word.
+        # Get the vectors, a 128-dim vector expression for each word.
         if DYNAMIC_TAGGING:
             wembs = [self.dynamic_rep(w, cf_init, cb_init) for w in words]
         else:
@@ -118,7 +118,8 @@ class DEEPTagger():
             exps.append(r_t)
         return exps
 
-    def sent_loss(self, words, tags):
+    def sent_loss(self, sent):
+        words, tags = map(list, zip(*sent))
         vecs = self.build_tagging_graph(words)
         errs = []
         for v, t in zip(vecs, tags):
@@ -176,9 +177,8 @@ def write_to_sheets():
 def evaluate_on_dev():
     good = total = good_sent = total_sent = unk_good = unk_total = 0.0
     for sent in dev:
-        words = [w for w, t in sent]
-        golds = [t for w, t in sent]
-        tags = [t for w, t in tagger.tag_sent(words)]
+        words, golds = map(list, zip(*sent))
+        tags = [t for _, t in tagger.tag_sent(words)]
         if tags == golds: good_sent += 1
         total_sent += 1
         for go, gu, w in zip(golds, tags, words):
@@ -197,7 +197,7 @@ def train_tagger(train):
     for ITER in range(HP_NUM_EPOCHS):
         epoch_start_time = time()
         random.shuffle(train)
-        for i, s in enumerate(train, 1):
+        for i, sent in enumerate(train, 1):
             # Report state
             if i > 0 and i % 5000 == 0:
                 trainer.status()
@@ -205,12 +205,9 @@ def train_tagger(train):
                 cum_loss = num_tagged = 0
 
             # Training
-            words = [w for w, t in s]
-            golds = [t for w, t in s]
-
-            loss_exp = tagger.sent_loss(words, golds)
+            loss_exp = tagger.sent_loss(sent)
             cum_loss += loss_exp.scalar_value()
-            num_tagged += len(golds)
+            num_tagged += len(sent)
             loss_exp.backward()
             trainer.update()
 
@@ -228,7 +225,6 @@ def train_tagger(train):
         print("------- EPOCH {:^2} DONE -------".format(ITER))
         now_time = time()
         print("Seconds since start {:f}, epoch {:f}".format(now_time - start_time, now_time - epoch_start_time))
-        # trainer.learning_rate /= (1 - HP_RATE_DECAY)
 
     print("HP epochs={} wemb_min={} emb_noise={} ".format(HP_NUM_EPOCHS, HP_WEMB_MIN_FREQ, HP_EMB_NOISE))
 
@@ -319,7 +315,7 @@ if __name__ == '__main__':
             chars.update(w)
             meta.wc[w] += 1
 
-    for sent in dev: # Shouldn't this be _UNK_?
+    for sent in dev: # Also account for chars in dev, so there are no unknown characters.
         for w, _ in sent:
             chars.update(w)
 
@@ -335,10 +331,6 @@ if __name__ == '__main__':
     meta.ntags = meta.vt.size()
     meta.nchars = meta.vc.size()
 
-    print("total: distinct words= 59359 , tags= 565 , chars= 115")
-    print("train: distinct words=", meta.nwords, ", tags=", meta.ntags, ", chars=", meta.nchars)
-
-    unknown_words_count = 0
     tagger = DEEPTagger(meta=meta)
     trainer = set_trainer(OPTIMIZATION_MODEL, tagger.model)
 
@@ -346,4 +338,4 @@ if __name__ == '__main__':
 
     print("Sentences, train=", len(train), ", validation=", len(dev))
 
-
+    #print(tagger.tag_sent("Markarinn er tilbúinn í slaginn!".split()))
