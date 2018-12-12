@@ -218,7 +218,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--mem', default=1024)
     parser.add_argument('--random_seed', type=int, default=42)
-    parser.add_argument('--ifd_set', '-i', help="select which ifd set to use (1-10)", type=int, default=2)
+    parser.add_argument('--ifd_set', '-i', help="select which IFD set to use (1-10)", type=int, default=2)
     parser.add_argument('--epochs', '-e', help="How many epochs? (20 is default)", type=int, default=20)
     parser.add_argument('--words_min_freq', '-wmf', help="Minimum frequency of words, else use char embeddings.",
                         type=int, default=3)
@@ -255,8 +255,7 @@ if __name__ == '__main__':
     CORPUS_FILE = "./otb.slash.sent"
     UNKNOWN_WORD = "_UNK_"
     UNKNOWN_CHAR = "<*>"
-    INFO_OUT_FOLDER = './results/'
-    IFD_FOLDER = './ifd/'
+    IFD_FOLDER = './IFD/'
 
     train_file = IFD_FOLDER + format(IFD_SET_NUM, '02') + "TM.txt"  # FIX Have to download if missing
     test_file = IFD_FOLDER + format(IFD_SET_NUM, '02') + "PM.txt"  # FIX Have to download if missing
