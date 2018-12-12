@@ -4,6 +4,8 @@ from collections import Counter, defaultdict
 from itertools import count
 from time import time
 import argparse
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 class Vocab:
     def __init__(self, w2i=None):
@@ -148,6 +150,29 @@ def read(fname):
             sent.append((w, p))
 
 
+def write_to_sheets():
+    scope = ['https://spreadsheets.google.com/feeds',
+             'https://www.googleapis.com/auth/drive']
+    creds = ServiceAccountCredentials.from_json_keyfile_name('client_secret.json', scope)
+    client = gspread.authorize(creds)
+
+    # Find a workbook by name and open the first sheet
+    # Make sure you use the right name here.
+    sheet = client.open("DEEPtagger: Experiments and results").sheet1
+
+    # Extract and print all of the values
+    # list_of_hashes = sheet.get_all_records()
+    # print(list_of_hashes)
+
+    row = [logging_dict['epoch'], logging_dict['word_acc'], logging_dict['sent_acc'], logging_dict['known_acc'],
+           logging_dict['unknown_acc'], logging_dict['ifd_set'], logging_dict['optimization'], logging_dict['min_freq'],
+           logging_dict['noise'], logging_dict['learning_rate'], logging_dict['learning_rate_max'],
+           logging_dict['learning_rate_min'], logging_dict['dynamic'], logging_dict['memory'], logging_dict['random_seed'],
+           logging_dict['dropout'], logging_dict['seconds'], logging_dict['final']]
+    sheet.insert_row(row, 2)
+
+
+
 def evaluate_on_dev():
     good = total = good_sent = total_sent = unk_good = unk_total = 0.0
     for sent in dev:
@@ -191,7 +216,14 @@ def train_tagger(train):
 
             # Evaluate
             if i == len(train) - 1:
-                print("EVAL: tags {:.3%} sent {:.3%} knw {:.3%} unk {:.3%}".format(*evaluate_on_dev()))
+                eval_values = evaluate_on_dev()
+                seconds = str(time() - epoch_start_time)
+                print("EVAL: tags {:.3%} sent {:.3%} knw {:.3%} unk {:.3%}".format(*eval_values))
+                logging_dict.update({'epoch': ITER+1, 'word_acc': eval_values[0], 'sent_acc': eval_values[1],
+                                     'known_acc': eval_values[2], 'unknown_acc': eval_values[3], 'seconds': seconds})
+                if ITER+1 == HP_NUM_EPOCHS:
+                    logging_dict['final':'X']
+                write_to_sheets()
 
         print("------- EPOCH {:^2} DONE -------".format(ITER))
         now_time = time()
@@ -252,7 +284,19 @@ if __name__ == '__main__':
     OPTIMIZATION_MODEL = args.optimization
     DYNAMIC_TAGGING = args.dynamic
 
-    CORPUS_FILE = "./otb.slash.sent"
+    logging_dict = {'ifd_set': IFD_SET_NUM, 'min_freq': '', 'noise': HP_EMB_NOISE, 'learning_rate': '',
+                    'learning_rate_max': '', 'learning_rate_min': '', 'dropout': HP_DROPOUT,
+                    'optimization': OPTIMIZATION_MODEL, 'dynamic': DYNAMIC_TAGGING, 'final': '', 'memory': args.mem,
+                    'random_seed': args.random_seed}
+
+    if DYNAMIC_TAGGING:
+        logging_dict['min_freq'] = HP_WEMB_MIN_FREQ
+    if OPTIMIZATION_MODEL == 'CyclicalSGD':
+        logging_dict['learning_rate_max'] = HP_LEARNING_RATE_MAX
+        logging_dict['learning_rate_min'] = HP_LEARNING_RATE_MIN
+    if OPTIMIZATION_MODEL in ['MomentumSGD','SimpleSGD']:
+        logging_dict['learning_rate'] = HP_LEARNING_RATE
+
     UNKNOWN_WORD = "_UNK_"
     UNKNOWN_CHAR = "<*>"
     IFD_FOLDER = './IFD/'
