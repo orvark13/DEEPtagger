@@ -28,42 +28,42 @@ class Vocab:
     def size(self): return len(self.w2i.keys())
 
 
-class Meta:
+class Dimensions:
     def __init__(self):
-        self.c_dim = 32
+        #self.c_dim = 32
         self.n_hidden = 32
-        self.lstm_char_input_dim = 20
-        self.lstm_word_input_dim = 128
-        self.lstm_tags_input_dim = 30
-        self.lstm_char_output_dim = 64
-        self.lstm_word_output_dim = 64
+        self.char_input = 20
+        self.word_input = 128
+        self.tags_input = 30
+        self.char_output = 64
+        self.word_output = 64
 
 
 class DEEPTagger():
-    def __init__(self, model=None, meta=None):
+    def __init__(self, dim):
         self.model = dy.Model()
         self.trainer = None
-        self.meta = meta
+        self.dim = dim # Network dimensions
         self.word_frequency = Counter()
 
     def create_network(self):
         assert self.vw.size(), "Need to build the vocabulary (build_vocab) before creating the network."
 
-        self.WORDS_LOOKUP = self.model.add_lookup_parameters((self.vw.size(), self.meta.lstm_word_input_dim))
-        self.CHARS_LOOKUP = self.model.add_lookup_parameters((self.vc.size(), self.meta.lstm_char_input_dim))
-        #self.p_t1 = self.model.add_lookup_parameters((self.vocab.ntags, self.meta.lstm_tags_input_dim))
+        self.WORDS_LOOKUP = self.model.add_lookup_parameters((self.vw.size(), self.dim.word_input))
+        self.CHARS_LOOKUP = self.model.add_lookup_parameters((self.vc.size(), self.dim.char_input))
+        #self.p_t1 = self.model.add_lookup_parameters((self.vocab.ntags, self.dim.tags_input))
 
         # MLP on top of biLSTM outputs 100 -> 32 -> ntags
-        self.pH = self.model.add_parameters((self.meta.n_hidden, self.meta.lstm_word_output_dim * 2))  # vocab-size, input-dim
-        self.pO = self.model.add_parameters((self.vt.size(), self.meta.n_hidden))  # vocab-size, hidden-dim nwords, self.meta.lstm_word_dim))
+        self.pH = self.model.add_parameters((self.dim.n_hidden, self.dim.word_output * 2))  # vocab-size, input-dim
+        self.pO = self.model.add_parameters((self.vt.size(), self.dim.n_hidden))  # vocab-size, hidden-dim # HMM! nwords, self.dim.word))
 
         # word-level LSTMs
-        self.fwdRNN = dy.LSTMBuilder(1, self.meta.lstm_word_input_dim * 2, self.meta.lstm_word_output_dim, self.model) # layers, input-dim, output-dim
-        self.bwdRNN = dy.LSTMBuilder(1, self.meta.lstm_word_input_dim * 2, self.meta.lstm_word_output_dim, self.model)
+        self.fwdRNN = dy.LSTMBuilder(1, self.dim.word_input * 2, self.dim.word_output, self.model) # layers, input-dim, output-dim
+        self.bwdRNN = dy.LSTMBuilder(1, self.dim.word_input * 2, self.dim.word_output, self.model)
 
         # char-level LSTMs
-        self.cFwdRNN = dy.LSTMBuilder(1, self.meta.lstm_char_input_dim, self.meta.lstm_char_output_dim, self.model)
-        self.cBwdRNN = dy.LSTMBuilder(1, self.meta.lstm_char_input_dim, self.meta.lstm_char_output_dim, self.model)
+        self.cFwdRNN = dy.LSTMBuilder(1, self.dim.char_input, self.dim.char_output, self.model)
+        self.cBwdRNN = dy.LSTMBuilder(1, self.dim.char_input, self.dim.char_output, self.model)
 
     def set_trainer(self, optimization):
         if optimization == 'MomentumSGD':
@@ -99,7 +99,7 @@ class DEEPTagger():
 
     def word_rep(self, w):
         if self.word_frequency[w] == 0:
-            return dy.zeros(self.meta.lstm_word_input_dim, batch_size=1)
+            return dy.zeros(self.dim.word_input, batch_size=1)
         w_index = self.vw.w2i[w]
         return self.WORDS_LOOKUP[w_index]
 
@@ -311,7 +311,6 @@ def train_and_evaluate_tagger(tagger, training_data, test_data):
     print("\nHP epochs={} wemb_min={} emb_noise={} ".format(HP_NUM_EPOCHS, HP_WEMB_MIN_FREQ, HP_EMB_NOISE)) # TODO add more HP
 
 
-meta = Meta()
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--mem', default=1024)
@@ -363,7 +362,7 @@ if __name__ == '__main__':
     test = list(read(test_file))
 
     # Create a neural network tagger and train it
-    tagger = DEEPTagger(meta=meta)
+    tagger = DEEPTagger(dim=Dimensions())
     tagger.set_trainer(OPTIMIZATION_MODEL)
 
     train_and_evaluate_tagger(tagger, train, test)
