@@ -190,7 +190,7 @@ def update_progress_notice(i, epoch, start_time, epoch_start_time, avg_loss, eva
         "{:>2}/{}".format(epoch, HP_NUM_EPOCHS),
         ("  {:>4}/{:<5}".format(int(now_time - start_time), str(int(now_time - epoch_start_time)) + 's') if i % 100 == 0 or evaluation else ""),
         ("  AVG LOSS: {:.3}".format(avg_loss) if i % 1000 == 0 or evaluation else ""),
-        ("  EVAL: tags {:.3%} sent {:.3%} knw {:.3%} unk {:.3%}".format(*evaluate) if evaluation else ""),
+        ("  EVAL: tags {:.3%} sent {:.3%} knw {:.3%} unk {:.3%}".format(*evaluation) if evaluation else ""),
         end='\r'
     )
 
