@@ -1,13 +1,16 @@
+#! /usr/bin/env python3
+
 import random
 import numpy as np
 from collections import Counter, defaultdict
-from itertools import count
+from itertools import count, cycle
 from time import time
 from datetime import datetime
 from pathlib import Path
 import argparse
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+
 
 class Vocab:
     def __init__(self, w2i=None):
@@ -153,23 +156,6 @@ def read(fname):
             sent.append((w, p))
 
 
-def write_to_sheets():
-    scope = ['https://spreadsheets.google.com/feeds',
-             'https://www.googleapis.com/auth/drive']
-    creds = ServiceAccountCredentials.from_json_keyfile_name('client_secret.json', scope)
-    client = gspread.authorize(creds)
-
-    # Open a Google Sheet, by name.
-    sheet = client.open("DEEPtagger: Experiments and results").sheet1
-
-    row = [logging_dict['epoch'], logging_dict['word_acc'], logging_dict['sent_acc'], logging_dict['known_acc'],
-           logging_dict['unknown_acc'], logging_dict['ifd_set'], logging_dict['optimization'], logging_dict['min_freq'],
-           logging_dict['noise'], logging_dict['learning_rate'], logging_dict['learning_rate_max'],
-           logging_dict['learning_rate_min'], logging_dict['dynamic'], logging_dict['memory'], logging_dict['random_seed'],
-           logging_dict['dropout'], logging_dict['seconds'], logging_dict['final']]
-    sheet.insert_row(row, 2)
-
-
 def evaluate_on_dev():
     good = total = good_sent = total_sent = unk_good = unk_total = 0.0
     for sent in dev:
@@ -183,23 +169,67 @@ def evaluate_on_dev():
                 if meta.wc[w] == 0: unk_good += 1
             total += 1
             if meta.wc[w] == 0: unk_total += 1
-    print("OOV", unk_total, ", correct ", unk_good)
+    #trainer.status()
+    #print("OOV", unk_total, ", correct ", unk_good)
     return good/total, good_sent/total_sent, (good-unk_good)/(total-unk_total), unk_good/unk_total
+
+spinner = cycle('⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏')
+
+def update_progress_notice(i, epoch, start_time, epoch_start_time, avg_loss, evaluation = None):
+    now_time = time()
+    print(" ",
+        next(spinner),
+        "{:>2}/{}".format(epoch, HP_NUM_EPOCHS),
+        ("  {:>4}/{:<5}".format(int(now_time - start_time), str(int(now_time - epoch_start_time)) + 's') if i % 100 == 0 or evaluation else ""),
+        ("  AVG LOSS: {:.3}".format(avg_loss) if i % 1000 == 0 or evaluation else ""),
+        ("  EVAL: tags {:.3%} sent {:.3%} knw {:.3%} unk {:.3%}".format(*evaluate_on_dev()) if evaluation else ""),
+        end='\r'
+    )
+
+
+def send_data_to_google_sheet(epoch, evaluation):
+    secret_file = Path(GOOGLE_SHEETS_CREDENTIAL_FILE)
+    if secret_file.is_file():
+        word_acc, sent_acc, known_acc, unknown_acc = evaluation
+
+        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+        creds = ServiceAccountCredentials.from_json_keyfile_name('client_secret.json', scope)
+        client = gspread.authorize(creds)
+
+        # Open a Google Sheet, by name
+        sheet = client.open("DEEPtagger: Experiments and results").sheet1
+
+        row = [
+            epoch,
+            word_acc,
+            sent_acc,
+            known_acc,
+            unknown_acc,
+            IFD_SET_NUM, # IDF set
+            OPTIMIZATION_MODEL,
+            (HP_WEMB_MIN_FREQ if DYNAMIC_TAGGING else ""),
+            HP_EMB_NOISE,
+            (HP_LEARNING_RATE if OPTIMIZATION_MODEL in ['MomentumSGD','SimpleSGD'] else ""), # learning rate
+            (HP_LEARNING_RATE_MAX if OPTIMIZATION_MODEL == 'CyclicalSGD' else ""), # learning rate max
+            (HP_LEARNING_RATE_MIN if OPTIMIZATION_MODEL == 'CyclicalSGD' else ""), # learning rate min
+            DYNAMIC_TAGGING,
+            args.mem, # Dynet memory
+            args.random_seed, # Random seed used for python and dynet
+            HP_DROPOUT,
+            datetime.fromtimestamp(time()).strftime("%d. %B %Y %I:%M:%S"), # timestamp
+            ("X" if epoch == HP_NUM_EPOCHS else "") # is final epoch
+        ]
+        print(row)
+        sheet.insert_row(row, 2)
 
 
 def train_tagger(train):
-    num_tagged = cum_loss = 0
     start_time = time()
     for ITER in range(HP_NUM_EPOCHS):
+        cum_loss = num_tagged = 0
         epoch_start_time = time()
         random.shuffle(train)
         for i, sent in enumerate(train, 1):
-            # Report state
-            if i > 0 and i % 5000 == 0:
-                trainer.status()
-                print("AVG LOSS: {:f}".format(cum_loss / num_tagged))
-                cum_loss = num_tagged = 0
-
             # Training
             loss_exp = tagger.sent_loss(sent)
             cum_loss += loss_exp.scalar_value()
@@ -207,25 +237,16 @@ def train_tagger(train):
             loss_exp.backward()
             trainer.update()
 
-            # Evaluate
-            if i == len(train) - 1:
-                eval_values = evaluate_on_dev()
-                print("EVAL: tags {:.3%} sent {:.3%} knw {:.3%} unk {:.3%}".format(*eval_values))
-                secret_file = Path('./client_secret.json')  # The secret file giving access to the Google Sheet
-                if secret_file.is_file():
-                    seconds = str(time() - epoch_start_time)
-                    logging_dict.update({'epoch': ITER+1, 'word_acc': eval_values[0], 'sent_acc': eval_values[1],
-                                         'known_acc': eval_values[2], 'unknown_acc': eval_values[3],
-                                         'seconds': datetime.fromtimestamp(time()).strftime("%d. %B %Y %I:%M:%S")})
-                    if ITER+1 == HP_NUM_EPOCHS:
-                        logging_dict['final'] = 'X'
-                    write_to_sheets()
+            if i % 10 == 0:
+                update_progress_notice(i, ITER + 1, start_time, epoch_start_time, cum_loss / num_tagged)
 
-        print("------- EPOCH {:^2} DONE -------".format(ITER))
-        now_time = time()
-        print("Seconds since start {:f}, epoch {:f}".format(now_time - start_time, now_time - epoch_start_time))
+        # Evaluate
+        evaluation = evaluate_on_dev()
+        update_progress_notice(i, ITER + 1, start_time, epoch_start_time, cum_loss / num_tagged, evaluation)
+        send_data_to_google_sheet(ITER + 1, evaluation)
 
-    print("HP epochs={} wemb_min={} emb_noise={} ".format(HP_NUM_EPOCHS, HP_WEMB_MIN_FREQ, HP_EMB_NOISE))
+    # Show hyperparameters used when we are done
+    print("\nHP epochs={} wemb_min={} emb_noise={} ".format(HP_NUM_EPOCHS, HP_WEMB_MIN_FREQ, HP_EMB_NOISE)) # TODO add more HP
 
 
 def set_trainer(optimization, model):
@@ -280,23 +301,12 @@ if __name__ == '__main__':
     OPTIMIZATION_MODEL = args.optimization
     DYNAMIC_TAGGING = args.dynamic
 
-    logging_dict = {'ifd_set': IFD_SET_NUM, 'min_freq': '', 'noise': HP_EMB_NOISE, 'learning_rate': '',
-                    'learning_rate_max': '', 'learning_rate_min': '', 'dropout': HP_DROPOUT,
-                    'optimization': OPTIMIZATION_MODEL, 'dynamic': DYNAMIC_TAGGING, 'final': '', 'memory': args.mem,
-                    'random_seed': args.random_seed}
-
-    if DYNAMIC_TAGGING:
-        logging_dict['min_freq'] = HP_WEMB_MIN_FREQ
-    if OPTIMIZATION_MODEL == 'CyclicalSGD':
-        logging_dict['learning_rate_max'] = HP_LEARNING_RATE_MAX
-        logging_dict['learning_rate_min'] = HP_LEARNING_RATE_MIN
-    if OPTIMIZATION_MODEL in ['MomentumSGD','SimpleSGD']:
-        logging_dict['learning_rate'] = HP_LEARNING_RATE
-
     UNKNOWN_WORD = "_UNK_"
     UNKNOWN_CHAR = "<*>"
-    IFD_FOLDER = './IFD/'
 
+    GOOGLE_SHEETS_CREDENTIAL_FILE = './client_secret.json'
+
+    IFD_FOLDER = './IFD/'
     train_file = IFD_FOLDER + format(IFD_SET_NUM, '02') + "TM.txt"  # FIX Have to download if missing
     test_file = IFD_FOLDER + format(IFD_SET_NUM, '02') + "PM.txt"  # FIX Have to download if missing
 
