@@ -44,14 +44,18 @@ class DEEPTagger():
         self.model = dy.Model()
         self.trainer = None
         self.meta = meta
+        self.word_frequency = Counter()
 
-        self.WORDS_LOOKUP = self.model.add_lookup_parameters((self.meta.nwords, self.meta.lstm_word_input_dim))
-        self.CHARS_LOOKUP = self.model.add_lookup_parameters((self.meta.nchars, self.meta.lstm_char_input_dim))
-        #self.p_t1 = self.model.add_lookup_parameters((self.meta.ntags, self.meta.lstm_tags_input_dim))
+    def create_network(self):
+        assert self.vw.size(), "Need to build the vocabulary (build_vocab) before creating the network."
+
+        self.WORDS_LOOKUP = self.model.add_lookup_parameters((self.vw.size(), self.meta.lstm_word_input_dim))
+        self.CHARS_LOOKUP = self.model.add_lookup_parameters((self.vc.size(), self.meta.lstm_char_input_dim))
+        #self.p_t1 = self.model.add_lookup_parameters((self.vocab.ntags, self.meta.lstm_tags_input_dim))
 
         # MLP on top of biLSTM outputs 100 -> 32 -> ntags
         self.pH = self.model.add_parameters((self.meta.n_hidden, self.meta.lstm_word_output_dim * 2))  # vocab-size, input-dim
-        self.pO = self.model.add_parameters((self.meta.ntags, self.meta.n_hidden))  # vocab-size, hidden-dimnwords, self.meta.lstm_word_dim))
+        self.pO = self.model.add_parameters((self.vt.size(), self.meta.n_hidden))  # vocab-size, hidden-dim nwords, self.meta.lstm_word_dim))
 
         # word-level LSTMs
         self.fwdRNN = dy.LSTMBuilder(1, self.meta.lstm_word_input_dim * 2, self.meta.lstm_word_output_dim, self.model) # layers, input-dim, output-dim
@@ -74,29 +78,29 @@ class DEEPTagger():
             self.trainer = dy.SimpleSGDTrainer(self.model, learning_rate=HP_LEARNING_RATE)
 
     def dynamic_rep(self, w, cf_init, cb_init):
-        if meta.wc[w] >= HP_WEMB_MIN_FREQ:
-            w_index = meta.vw.w2i[w]
+        if self.word_frequency[w] >= HP_WEMB_MIN_FREQ:
+            w_index = self.vw.w2i[w]
             return self.WORDS_LOOKUP[w_index]
         else:
-            pad_char = meta.vc.w2i[UNKNOWN_CHAR]
-            char_ids = [pad_char] + [meta.vc.w2i[c] for c in w] + [pad_char]
+            pad_char = self.vc.w2i[UNKNOWN_CHAR]
+            char_ids = [pad_char] + [self.vc.w2i[c] for c in w] + [pad_char]
             char_embs = [self.CHARS_LOOKUP[cid] for cid in char_ids]
             fw_exps = cf_init.transduce(char_embs)
             bw_exps = cb_init.transduce(reversed(char_embs))
             return dy.concatenate([ fw_exps[-1], bw_exps[-1] ])
 
     def char_rep(self, w, cf_init, cb_init):
-        pad_char = meta.vc.w2i[UNKNOWN_CHAR]
-        char_ids = [pad_char] + [meta.vc.w2i[c] for c in w] + [pad_char]
+        pad_char = self.vc.w2i[UNKNOWN_CHAR]
+        char_ids = [pad_char] + [self.vc.w2i[c] for c in w] + [pad_char]
         char_embs = [self.CHARS_LOOKUP[cid] for cid in char_ids]
         fw_exps = cf_init.transduce(char_embs)
         bw_exps = cb_init.transduce(reversed(char_embs))
         return dy.concatenate([ fw_exps[-1], bw_exps[-1] ])
 
     def word_rep(self, w):
-        if meta.wc[w] == 0:
+        if self.word_frequency[w] == 0:
             return dy.zeros(self.meta.lstm_word_input_dim, batch_size=1)
-        w_index = meta.vw.w2i[w]
+        w_index = self.vw.w2i[w]
         return self.WORDS_LOOKUP[w_index]
 
     def word_and_char_rep(self, w, cf_init, cb_init):
@@ -139,7 +143,7 @@ class DEEPTagger():
         vecs = self.build_tagging_graph(words)
         errs = []
         for v, t in zip(vecs, tags):
-            tid = meta.vt.w2i[t]
+            tid = self.vt.w2i[t]
             err = dy.pickneglogsoftmax(v, tid)
             errs.append(err)
         return dy.esum(errs)
@@ -151,7 +155,7 @@ class DEEPTagger():
         tags = []
         for prb in probs:
             tag = np.argmax(prb)
-            tags.append(meta.vt.i2w[tag])
+            tags.append(self.vt.i2w[tag])
         return zip(words, tags)
 
     def update_trainer(self):
@@ -159,12 +163,39 @@ class DEEPTagger():
         #self.trainer.status()
 
     def train(self, epochs, training_data):
+        self.build_vocab(training_data)
+        self.create_network()
+
         for ITER in range(epochs):
             random.shuffle(training_data)
             for i, sent in enumerate(training_data, 1):
                 loss_exp = self.sent_loss(sent)
                 loss_exp.backward()
                 self.update_trainer()
+
+    def build_vocab(self, training_data):
+        words = []
+        tags = []
+        chars = set()
+
+        for sent in training_data:
+            for w, p in sent:
+                words.append(w)
+                tags.append(p)
+                chars.update(w)
+                self.word_frequency[w] += 1
+
+        # FIXME, remove
+        for sent in test:  # Also account for chars in dev, so there are no unknown characters.
+            for w, _ in sent:
+                chars.update(w)
+
+        words.append(UNKNOWN_WORD)
+        chars.add(UNKNOWN_CHAR)
+
+        self.vw = Vocab.from_corpus([words])
+        self.vt = Vocab.from_corpus([tags])
+        self.vc = Vocab.from_corpus([chars])
 
 
 ######### HELPERS FOR RUNNING IN CONSOLE #########
@@ -241,9 +272,9 @@ def evaluate_tagging(tagger, test_data):
         for go, gu, w in zip(golds, tags, words):
             if go == gu:
                 good += 1
-                if meta.wc[w] == 0: unk_good += 1
+                if tagger.word_frequency[w] == 0: unk_good += 1
             total += 1
-            if meta.wc[w] == 0: unk_total += 1
+            if tagger.word_frequency[w] == 0: unk_total += 1
     #print("OOV", unk_total, ", correct ", unk_good)
     return good/total, good_sent/total_sent, (good-unk_good)/(total-unk_total), unk_good/unk_total
 
@@ -252,6 +283,9 @@ def train_and_evaluate_tagger(tagger, training_data, test_data):
     '''
     Train the tagger, report progress to console and send to Google Sheets.
     '''
+    tagger.build_vocab(training_data)
+    tagger.create_network()
+
     start_time = time()
     for ITER in range(HP_NUM_EPOCHS):
         cum_loss = num_tagged = 0
@@ -325,37 +359,10 @@ if __name__ == '__main__':
     train_file = IFD_FOLDER + format(IFD_SET_NUM, '02') + "TM.txt"  # FIX Have to download if missing
     test_file = IFD_FOLDER + format(IFD_SET_NUM, '02') + "PM.txt"  # FIX Have to download if missing
 
-    words = []
-    tags = []
-    chars = set()
-    meta.wc = Counter()
-
     train = list(read(train_file))
     test = list(read(test_file))
 
-    for sent in train:
-        for w, p in sent:
-            words.append(w)
-            tags.append(p)
-            chars.update(w)
-            meta.wc[w] += 1
-
-    for sent in test:  # Also account for chars in dev, so there are no unknown characters.
-        for w, _ in sent:
-            chars.update(w)
-
-    words.append(UNKNOWN_WORD)
-    chars.add(UNKNOWN_CHAR)
-
-    meta.vw = Vocab.from_corpus([words])
-    meta.vt = Vocab.from_corpus([tags])
-    meta.vc = Vocab.from_corpus([chars])
-    UNK = meta.vw.w2i[UNKNOWN_WORD]
-
-    meta.nwords = meta.vw.size()
-    meta.ntags = meta.vt.size()
-    meta.nchars = meta.vc.size()
-
+    # Create a neural network tagger and train it
     tagger = DEEPTagger(meta=meta)
     tagger.set_trainer(OPTIMIZATION_MODEL)
 
