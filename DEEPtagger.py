@@ -30,40 +30,58 @@ class Vocab:
 
 class Dimensions:
     def __init__(self):
-        #self.c_dim = 32
-        self.n_hidden = 32
+        self.hidden = 32
+        self.hidden_input = 100
         self.char_input = 20
-        self.word_input = 128
+        self.word_input = 100
+        self.tags_input = 30
+        self.char_output = 50
+        self.word_output = 50
+        self.word_lookup = 100
+        self.char_lookup = 20
+class ConcatDimensions:
+    def __init__(self):
+        self.hidden = 32
+        self.hidden_input = 128
+        self.char_input = 20
+        self.word_input = 256
         self.tags_input = 30
         self.char_output = 64
         self.word_output = 64
-
+        self.word_lookup = 128
+        self.char_lookup = 20
 
 class DEEPTagger():
-    def __init__(self, dim):
+    def __init__(self):
         self.model = dy.Model()
         self.trainer = None
-        self.dim = dim # Network dimensions
         self.word_frequency = Counter()
+
+        if DYNAMIC_TAGGING:
+            self.dim = Dimensions()
+        else:
+            self.dim = ConcatDimensions()
+
 
     def create_network(self):
         assert self.vw.size(), "Need to build the vocabulary (build_vocab) before creating the network."
 
-        self.WORDS_LOOKUP = self.model.add_lookup_parameters((self.vw.size(), self.dim.word_input))
-        self.CHARS_LOOKUP = self.model.add_lookup_parameters((self.vc.size(), self.dim.char_input))
+        self.WORDS_LOOKUP = self.model.add_lookup_parameters((self.vw.size(), self.dim.word_lookup))
+        self.CHARS_LOOKUP = self.model.add_lookup_parameters((self.vc.size(), self.dim.char_lookup))
         #self.p_t1 = self.model.add_lookup_parameters((self.vocab.ntags, self.dim.tags_input))
 
-        # MLP on top of biLSTM outputs 100 -> 32 -> ntags
-        self.pH = self.model.add_parameters((self.dim.n_hidden, self.dim.word_output * 2))  # vocab-size, input-dim
-        self.pO = self.model.add_parameters((self.vt.size(), self.dim.n_hidden))  # vocab-size, hidden-dim # HMM! nwords, self.dim.word))
+        # MLP on top of biLSTM outputs, word/char out -> hidden -> num tags
+        self.pH = self.model.add_parameters((self.dim.hidden, self.dim.hidden_input))  # hidden-dim, hidden-input-dim
+        self.pO = self.model.add_parameters((self.vt.size(), self.dim.hidden))  # vocab-size, hidden-dim
 
         # word-level LSTMs
-        self.fwdRNN = dy.LSTMBuilder(1, self.dim.word_input * 2, self.dim.word_output, self.model) # layers, input-dim, output-dim
-        self.bwdRNN = dy.LSTMBuilder(1, self.dim.word_input * 2, self.dim.word_output, self.model)
+        self.fwdRNN = dy.LSTMBuilder(1, self.dim.word_input, self.dim.word_output, self.model) # layers, input-dim, output-dim
+        self.bwdRNN = dy.LSTMBuilder(1, self.dim.word_input, self.dim.word_output, self.model)
 
         # char-level LSTMs
         self.cFwdRNN = dy.LSTMBuilder(1, self.dim.char_input, self.dim.char_output, self.model)
         self.cBwdRNN = dy.LSTMBuilder(1, self.dim.char_input, self.dim.char_output, self.model)
+
 
     def set_trainer(self, optimization):
         if optimization == 'MomentumSGD':
@@ -99,7 +117,7 @@ class DEEPTagger():
 
     def word_rep(self, w):
         if self.word_frequency[w] == 0:
-            return dy.zeros(self.dim.word_input, batch_size=1)
+            return dy.zeros(self.dim.word_output * 2)
         w_index = self.vw.w2i[w]
         return self.WORDS_LOOKUP[w_index]
 
@@ -308,7 +326,7 @@ def train_and_evaluate_tagger(tagger, training_data, test_data):
         send_data_to_google_sheet(ITER + 1, evaluation)
 
     # Show hyperparameters used when we are done
-    print("\nHP epochs={} wemb_min={} emb_noise={} ".format(HP_NUM_EPOCHS, HP_WEMB_MIN_FREQ, HP_EMB_NOISE)) # TODO add more HP
+    print("\nHP dynamic={} wemb_min_freq={} epochs={} wemb_min={} emb_noise={} ".format(DYNAMIC_TAGGING, HP_WEMB_MIN_FREQ, HP_NUM_EPOCHS, HP_WEMB_MIN_FREQ, HP_EMB_NOISE)) # TODO add more HP
 
 
 if __name__ == '__main__':
@@ -328,7 +346,7 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate_min', '-l_min', help="Learning rate min for Cyclical SGD", type=float,
                         default=0.01)
     parser.add_argument('--dropout', '-d', help="Dropout rate", type=float, default=0.0)
-    parser.add_argument('--dynamic', '-dyn', help="Tag dynamically", type=bool, default=False)
+    parser.add_argument('--dynamic', '-dyn', help="Tag dynamically", action="store_true")
     args = parser.parse_args()
 
     import dynet_config
@@ -362,7 +380,7 @@ if __name__ == '__main__':
     test = list(read(test_file))
 
     # Create a neural network tagger and train it
-    tagger = DEEPTagger(dim=Dimensions())
+    tagger = DEEPTagger()
     tagger.set_trainer(OPTIMIZATION_MODEL)
 
     train_and_evaluate_tagger(tagger, train, test)
