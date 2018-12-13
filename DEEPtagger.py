@@ -219,7 +219,7 @@ def send_data_to_google_sheet(epoch, evaluation):
             datetime.fromtimestamp(time()).strftime("%d. %B %Y %I:%M:%S"), # timestamp
             ("X" if epoch == HP_NUM_EPOCHS else "") # is final epoch
         ]
-        print(row)
+
         sheet.insert_row(row, 2)
 
 
