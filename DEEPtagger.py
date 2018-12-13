@@ -100,24 +100,18 @@ class DEEPTagger():
             w_index = self.vw.w2i[w]
             return self.WORDS_LOOKUP[w_index]
         else:
-            pad_char = self.vc.w2i[UNKNOWN_CHAR]
-            char_ids = [pad_char] + [self.vc.w2i[c] for c in w] + [pad_char]
-            char_embs = [self.CHARS_LOOKUP[cid] for cid in char_ids]
-            fw_exps = cf_init.transduce(char_embs)
-            bw_exps = cb_init.transduce(reversed(char_embs))
-            return dy.concatenate([ fw_exps[-1], bw_exps[-1] ])
+            return self.char_rep(w,  cf_init, cb_init)
 
     def char_rep(self, w, cf_init, cb_init):
-        pad_char = self.vc.w2i[UNKNOWN_CHAR]
-        char_ids = [pad_char] + [self.vc.w2i[c] for c in w] + [pad_char]
-        char_embs = [self.CHARS_LOOKUP[cid] for cid in char_ids]
+        char_ids = [self.vc.w2i[START_OF_WORD]] + [self.vc.w2i[c] if self.vc.w2i[c] else -1 for c in w] + [self.vc.w2i[END_OF_WORD]]
+        char_embs = [self.CHARS_LOOKUP[cid] if cid != -1 else dy.zeros(self.dim.char_input) for cid in char_ids]
         fw_exps = cf_init.transduce(char_embs)
         bw_exps = cb_init.transduce(reversed(char_embs))
         return dy.concatenate([ fw_exps[-1], bw_exps[-1] ])
 
     def word_rep(self, w):
         if self.word_frequency[w] == 0:
-            return dy.zeros(self.dim.word_output * 2)
+            return dy.zeros(self.dim.word_input)
         w_index = self.vw.w2i[w]
         return self.WORDS_LOOKUP[w_index]
 
@@ -203,13 +197,8 @@ class DEEPTagger():
                 chars.update(w)
                 self.word_frequency[w] += 1
 
-        # FIXME, remove
-        for sent in test:  # Also account for chars in dev, so there are no unknown characters.
-            for w, _ in sent:
-                chars.update(w)
-
-        words.append(UNKNOWN_WORD)
-        chars.add(UNKNOWN_CHAR)
+        chars.add(START_OF_WORD)
+        chars.add(END_OF_WORD)
 
         self.vw = Vocab.from_corpus([words])
         self.vt = Vocab.from_corpus([tags])
@@ -326,7 +315,7 @@ def train_and_evaluate_tagger(tagger, training_data, test_data):
         send_data_to_google_sheet(ITER + 1, evaluation)
 
     # Show hyperparameters used when we are done
-    print("\nHP dynamic={} wemb_min_freq={} epochs={} wemb_min={} emb_noise={} ".format(DYNAMIC_TAGGING, HP_WEMB_MIN_FREQ, HP_NUM_EPOCHS, HP_WEMB_MIN_FREQ, HP_EMB_NOISE)) # TODO add more HP
+    print("\nHP opt={} dynamic={} wemb_min_freq={} epochs={} wemb_min={} emb_noise={} ".format(OPTIMIZATION_MODEL, DYNAMIC_TAGGING, HP_WEMB_MIN_FREQ, HP_NUM_EPOCHS, HP_WEMB_MIN_FREQ, HP_EMB_NOISE)) # TODO add more HP
 
 
 if __name__ == '__main__':
@@ -367,8 +356,8 @@ if __name__ == '__main__':
     OPTIMIZATION_MODEL = args.optimization
     DYNAMIC_TAGGING = args.dynamic
 
-    UNKNOWN_WORD = "_UNK_"
-    UNKNOWN_CHAR = "<*>"
+    START_OF_WORD = "<w>"
+    END_OF_WORD = "</w>"
 
     GOOGLE_SHEETS_CREDENTIAL_FILE = './client_secret.json'
 
