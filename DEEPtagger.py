@@ -99,7 +99,7 @@ class DEEPTagger():
         cf_init = self.cFwdRNN.initial_state()
         cb_init = self.cBwdRNN.initial_state()
 
-        # Get the vectors, a 128-dim vector expression for each word.
+        # Get the word vectors, a 128-dim vector expression for each word.
         if DYNAMIC_TAGGING:
             wembs = [self.dynamic_rep(w, cf_init, cb_init) for w in words]
         else:
@@ -216,7 +216,7 @@ def train_tagger(train):
                     seconds = str(time() - epoch_start_time)
                     logging_dict.update({'epoch': ITER+1, 'word_acc': eval_values[0], 'sent_acc': eval_values[1],
                                          'known_acc': eval_values[2], 'unknown_acc': eval_values[3],
-                                         'seconds': datetime.fromtimestamp(seconds).strftime("%d. %B %Y %I:%M:%S")})
+                                         'seconds': datetime.fromtimestamp(time()).strftime("%d. %B %Y %I:%M:%S")})
                     if ITER+1 == HP_NUM_EPOCHS:
                         logging_dict['final'] = 'X'
                     write_to_sheets()
