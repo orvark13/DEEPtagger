@@ -70,6 +70,13 @@ class DEEPTagger():
     def create_network(self):
         assert self.vw.size(), "Need to build the vocabulary (build_vocab) before creating the network."
 
+        if self.hp.pre_trained_embeddings is not None:  # Use pretrained embeddings
+            self.dim.word_lookup = self.word_embeddings.shape[1]
+            self.WORDS_LOOKUP = self.model.add_lookup_parameters((self.vw.size(), self.dim.word_lookup))
+            self.WORDS_LOOKUP.init_from_array(self.word_embeddings)
+        else:
+            self.WORDS_LOOKUP = self.model.add_lookup_parameters((self.vw.size(), self.dim.word_lookup))
+
         self.WORDS_LOOKUP = self.model.add_lookup_parameters((self.vw.size(), self.dim.word_lookup))
         self.CHARS_LOOKUP = self.model.add_lookup_parameters((self.vc.size(), self.dim.char_lookup))
         #self.p_t1 = self.model.add_lookup_parameters((self.vocab.ntags, self.dim.tags_input))
@@ -79,8 +86,8 @@ class DEEPTagger():
         self.pO = self.model.add_parameters((self.vt.size(), self.dim.hidden))  # vocab-size, hidden-dim
 
         # word-level LSTMs
-        self.fwdRNN = dy.LSTMBuilder(1, self.dim.word_input, self.dim.word_output, self.model) # layers, input-dim, output-dim
-        self.bwdRNN = dy.LSTMBuilder(1, self.dim.word_input, self.dim.word_output, self.model)
+        self.fwdRNN = dy.LSTMBuilder(1, self.dim.word_lookup+self.dim.char_output*2, self.dim.word_output, self.model) # layers, input-dim, output-dim
+        self.bwdRNN = dy.LSTMBuilder(1, self.dim.word_lookup+self.dim.char_output*2, self.dim.word_output, self.model)
 
         # char-level LSTMs
         self.cFwdRNN = dy.LSTMBuilder(1, self.dim.char_input, self.dim.char_output, self.model)
@@ -179,6 +186,8 @@ class DEEPTagger():
 
     def train(self, epochs, training_data):
         self.build_vocab(training_data)
+        if self.hp.pre_trained_embeddings is not None:
+            self.add_pre_trained_embeddings(self.hp.pre_trained_embeddings)
         self.create_network()
 
         for ITER in range(epochs):
@@ -206,3 +215,22 @@ class DEEPTagger():
         self.vw = Vocab.from_corpus([words])
         self.vt = Vocab.from_corpus([tags])
         self.vc = Vocab.from_corpus([chars])
+
+    def add_pre_trained_embeddings(self, emb_file):
+        igc_vocab = {}
+        igc_vectors = []
+        with open(emb_file) as f:
+            f.readline()
+            for i, line in enumerate(f):
+                igc_fields = line.strip().split(" ")
+                igc_vocab[igc_fields[0]] = i
+                igc_vectors.append(list(map(float, igc_fields[1:])))
+
+        self.word_embeddings = np.zeros((len(self.vw.w2i.keys()), len(igc_vectors[0])))
+
+        for training_word in self.vw.w2i.keys():
+            try:
+                self.word_embeddings[self.vw.w2i[training_word]] = self.igc_vectors[self.igc_vocab[training_word]]
+            except:
+                pass
+        self.word_embeddings = self.word_embeddings * int(self.hp.scale_embeddings)

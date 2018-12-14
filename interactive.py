@@ -31,6 +31,8 @@ if __name__ == '__main__':
                         default=0.01)
     parser.add_argument('--dropout', '-d', help="Dropout rate", type=float, default=0.0)
     parser.add_argument('--dynamic', '-dyn', help="Tag dynamically", action="store_true")
+    parser.add_argument('--pre_trained_embeddings', '-pte', help="File with pre-trained embeddings")
+    parser.add_argument('--scale_embeddings', '-se', help="Scale the embeddings matrix", default=1)
     args = parser.parse_args()
 
     GOOGLE_SHEETS_CREDENTIAL_FILE = './client_secret.json'

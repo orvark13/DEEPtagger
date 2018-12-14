@@ -37,7 +37,7 @@ def update_progress_notice(i, epoch, start_time, epoch_start_time, avg_loss, eva
     )
 
 
-def send_data_to_google_sheet(epoch, evaluation):
+def send_data_to_google_sheet(epoch, evaluation, loss):
     secret_file = Path(GOOGLE_SHEETS_CREDENTIAL_FILE)
     if secret_file.is_file():
         word_acc, sent_acc, known_acc, unknown_acc = evaluation
@@ -67,7 +67,10 @@ def send_data_to_google_sheet(epoch, evaluation):
             42, #args.random_seed, # Random seed used for python and Dynet
             args.dropout,
             datetime.fromtimestamp(time()).strftime("%d. %B %Y %I:%M:%S"), # timestamp
-            ("X" if epoch == args.epochs else "") # is final epoch
+            ("X" if epoch == args.epochs else ""), # is final epoch
+            loss,
+            args.pre_trained_embeddings,
+            args.scale_embeddings
         ]
 
         sheet.insert_row(row, 2)
@@ -95,6 +98,8 @@ def train_and_evaluate_tagger(tagger, training_data, test_data):
     Train the tagger, report progress to console and send to Google Sheets.
     '''
     tagger.build_vocab(training_data)
+    if tagger.hp.pre_trained_embeddings is not None:
+        tagger.add_pre_trained_embeddings(tagger.hp.pre_trained_embeddings)
     tagger.create_network()
 
     start_time = time()
@@ -116,7 +121,7 @@ def train_and_evaluate_tagger(tagger, training_data, test_data):
         # Evaluate
         evaluation = evaluate_tagging(tagger, test_data)
         update_progress_notice(i, ITER + 1, start_time, epoch_start_time, cum_loss / num_tagged, evaluation)
-        send_data_to_google_sheet(ITER + 1, evaluation)
+        send_data_to_google_sheet(ITER + 1, evaluation, cum_loss / num_tagged)
 
     # Show hyperparameters used when we are done
     print("\nHP opt={} dynamic={} wemb_min_freq={} epochs={} wemb_min={} emb_noise={} ".format(args.optimization, args.dynamic, args.words_min_freq, args.epochs, args.words_min_freq, args.noise))
@@ -140,6 +145,8 @@ if __name__ == '__main__':
                         default=0.01)
     parser.add_argument('--dropout', '-d', help="Dropout rate", type=float, default=0.0)
     parser.add_argument('--dynamic', '-dyn', help="Tag dynamically", action="store_true")
+    parser.add_argument('--pre_trained_embeddings', '-pte', help="File with pre-trained embeddings")
+    parser.add_argument('--scale_embeddings', '-se', help="Scale the embeddings matrix", default=1)
     args = parser.parse_args()
 
     GOOGLE_SHEETS_CREDENTIAL_FILE = './client_secret.json'
