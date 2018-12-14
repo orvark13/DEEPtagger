@@ -33,11 +33,11 @@ class Dimensions:
         self.hidden = 32
         self.hidden_input = 100
         self.char_input = 20
-        self.word_input = 100
+        self.word_input = 128 #100
         self.tags_input = 30
-        self.char_output = 50
-        self.word_output = 50
-        self.word_lookup = 100
+        self.char_output = 64 #50
+        self.word_output = 64 #50
+        self.word_lookup = 128 #100
         self.char_lookup = 20
 class ConcatDimensions:
     def __init__(self):
@@ -51,13 +51,20 @@ class ConcatDimensions:
         self.word_lookup = 128
         self.char_lookup = 20
 
+
 class DEEPTagger():
-    def __init__(self):
+    START_OF_WORD = "<w>"
+    END_OF_WORD = "</w>"
+
+    def __init__(self, hyperparams):
         self.model = dy.Model()
         self.trainer = None
         self.word_frequency = Counter()
+        self.hp = hyperparams
 
-        if DYNAMIC_TAGGING:
+        self.set_trainer(self.hp.optimization)
+
+        if self.hp.dynamic:
             self.dim = Dimensions()
         else:
             self.dim = ConcatDimensions()
@@ -85,41 +92,40 @@ class DEEPTagger():
 
     def set_trainer(self, optimization):
         if optimization == 'MomentumSGD':
-            self.trainer = dy.MomentumSGDTrainer(self.model, learning_rate=HP_LEARNING_RATE)
+            self.trainer = dy.MomentumSGDTrainer(self.model, learning_rate=self.hp.learning_rate)
         if optimization == 'CyclicalSGD':
-            self.trainer = dy.CyclicalSGDTrainer(self.model, learning_rate_max=HP_LEARNING_RATE_MAX, learning_rate_min=HP_LEARNING_RATE_MIN)
+            self.trainer = dy.CyclicalSGDTrainer(self.model, learning_rate_max=self.hp.learning_rate_max, learning_rate_min=self.hp.learning_rate_min)
         if optimization == 'Adam':
             self.trainer = dy.AdamTrainer(self.model)
         if optimization == 'RMSProp':
             self.trainer = dy.RMSPropTrainer(self.model)
         else: # 'SimpleSGD'
-            self.trainer = dy.SimpleSGDTrainer(self.model, learning_rate=HP_LEARNING_RATE)
+            self.trainer = dy.SimpleSGDTrainer(self.model, learning_rate=self.hp.learning_rate)
 
     def dynamic_rep(self, w, cf_init, cb_init):
-        if self.word_frequency[w] >= HP_WEMB_MIN_FREQ:
+        if self.word_frequency[w] >= self.hp.words_min_freq:
             w_index = self.vw.w2i[w]
             return self.WORDS_LOOKUP[w_index]
         else:
-            return self.char_rep(w,  cf_init, cb_init)
+            return self.char_rep(w, cf_init, cb_init)
 
     def char_rep(self, w, cf_init, cb_init):
-        char_ids = [self.vc.w2i[START_OF_WORD]] + [self.vc.w2i[c] if self.vc.w2i[c] else -1 for c in w] + [self.vc.w2i[END_OF_WORD]]
-        char_embs = [self.CHARS_LOOKUP[cid] if cid != -1 else dy.zeros(self.dim.char_input) for cid in char_ids]
+        char_ids = [self.vc.w2i[DEEPTagger.START_OF_WORD]] + [self.vc.w2i[c] if self.vc.w2i[c] else -1 for c in w] + [self.vc.w2i[DEEPTagger.END_OF_WORD]]
+        char_embs = [self.CHARS_LOOKUP[cid] if cid != -1 else dy.zeros(self.dim.char_lookup) for cid in char_ids]
         fw_exps = cf_init.transduce(char_embs)
         bw_exps = cb_init.transduce(reversed(char_embs))
         return dy.concatenate([ fw_exps[-1], bw_exps[-1] ])
 
     def word_rep(self, w):
         if self.word_frequency[w] == 0:
-            return dy.zeros(self.dim.word_input)
+            return dy.zeros(self.dim.word_lookup)
         w_index = self.vw.w2i[w]
         return self.WORDS_LOOKUP[w_index]
 
     def word_and_char_rep(self, w, cf_init, cb_init):
         wembs = self.word_rep(w)
         cembs = self.char_rep(w, cf_init, cb_init)
-        x = dy.concatenate([wembs, cembs])
-        return x
+        return dy.concatenate([wembs, cembs])
 
     def build_tagging_graph(self, words):
         dy.renew_cg()
@@ -132,13 +138,13 @@ class DEEPTagger():
         cb_init = self.cBwdRNN.initial_state()
 
         # Get the word vectors, a 128-dim vector expression for each word.
-        if DYNAMIC_TAGGING:
+        if self.hp.dynamic:
             wembs = [self.dynamic_rep(w, cf_init, cb_init) for w in words]
         else:
             wembs = [self.word_and_char_rep(w, cf_init, cb_init) for w in words]
 
-        if HP_EMB_NOISE > 0:
-            wembs = [dy.noise(we, HP_EMB_NOISE) for we in wembs]
+        if self.hp.noise > 0:
+            wembs = [dy.noise(we, self.hp.noise) for we in wembs]
 
         # Feed word vectors into biLSTM
         fw_exps = f_init.transduce(wembs)
@@ -197,8 +203,8 @@ class DEEPTagger():
                 chars.update(w)
                 self.word_frequency[w] += 1
 
-        chars.add(START_OF_WORD)
-        chars.add(END_OF_WORD)
+        chars.add(DEEPTagger.START_OF_WORD)
+        chars.add(DEEPTagger.END_OF_WORD)
 
         self.vw = Vocab.from_corpus([words])
         self.vt = Vocab.from_corpus([tags])
@@ -225,7 +231,7 @@ def update_progress_notice(i, epoch, start_time, epoch_start_time, avg_loss, eva
     now_time = time()
     print(" ",
         next(spinner),
-        "{:>2}/{}".format(epoch, HP_NUM_EPOCHS),
+        "{:>2}/{}".format(epoch, args.epochs),
         ("  {:>4}/{:<5}".format(int(now_time - start_time), str(int(now_time - epoch_start_time)) + 's') if i % 100 == 0 or evaluation else ""),
         ("  AVG LOSS: {:.3}".format(avg_loss) if i % 1000 == 0 or evaluation else ""),
         ("  EVAL: tags {:.3%} sent {:.3%} knw {:.3%} unk {:.3%}".format(*evaluation) if evaluation else ""),
@@ -251,19 +257,19 @@ def send_data_to_google_sheet(epoch, evaluation):
             sent_acc,
             known_acc,
             unknown_acc,
-            IFD_SET_NUM, # IDF set
-            OPTIMIZATION_MODEL,
-            (HP_WEMB_MIN_FREQ if DYNAMIC_TAGGING else ""),
-            HP_EMB_NOISE,
-            (HP_LEARNING_RATE if OPTIMIZATION_MODEL in ['MomentumSGD','SimpleSGD'] else ""), # learning rate
-            (HP_LEARNING_RATE_MAX if OPTIMIZATION_MODEL == 'CyclicalSGD' else ""), # learning rate max
-            (HP_LEARNING_RATE_MIN if OPTIMIZATION_MODEL == 'CyclicalSGD' else ""), # learning rate min
-            DYNAMIC_TAGGING,
+            args.ifd_set,
+            args.optimization,
+            (args.words_min_freq if args.dynamic else ""),
+            args.noise,
+            (args.learning_rate if args.optimization in ['MomentumSGD','SimpleSGD'] else ""),
+            (args.learning_rate_max if args.optimization == 'CyclicalSGD' else ""),
+            (args.learning_rate_min if args.optimization == 'CyclicalSGD' else ""),
+            args.dynamic,
             args.mem, # Dynet memory
             args.random_seed, # Random seed used for python and dynet
-            HP_DROPOUT,
+            args.dropout,
             datetime.fromtimestamp(time()).strftime("%d. %B %Y %I:%M:%S"), # timestamp
-            ("X" if epoch == HP_NUM_EPOCHS else "") # is final epoch
+            ("X" if epoch == args.epochs else "") # is final epoch
         ]
 
         sheet.insert_row(row, 2)
@@ -294,7 +300,7 @@ def train_and_evaluate_tagger(tagger, training_data, test_data):
     tagger.create_network()
 
     start_time = time()
-    for ITER in range(HP_NUM_EPOCHS):
+    for ITER in range(args.epochs):
         cum_loss = num_tagged = 0
         epoch_start_time = time()
         random.shuffle(training_data)
@@ -315,7 +321,7 @@ def train_and_evaluate_tagger(tagger, training_data, test_data):
         send_data_to_google_sheet(ITER + 1, evaluation)
 
     # Show hyperparameters used when we are done
-    print("\nHP opt={} dynamic={} wemb_min_freq={} epochs={} wemb_min={} emb_noise={} ".format(OPTIMIZATION_MODEL, DYNAMIC_TAGGING, HP_WEMB_MIN_FREQ, HP_NUM_EPOCHS, HP_WEMB_MIN_FREQ, HP_EMB_NOISE)) # TODO add more HP
+    print("\nHP opt={} dynamic={} wemb_min_freq={} epochs={} wemb_min={} emb_noise={} ".format(args.optimization, args.dynamic, args.words_min_freq, args.epochs, args.words_min_freq, args.noise))
 
 
 if __name__ == '__main__':
@@ -344,33 +350,16 @@ if __name__ == '__main__':
     random.seed(args.random_seed)
     import dynet as dy
 
-    # Hyper-parameters and constants
-    IFD_SET_NUM = args.ifd_set
-    HP_NUM_EPOCHS = args.epochs
-    HP_WEMB_MIN_FREQ = args.words_min_freq  # Use char embeddings for words that are less frequent.
-    HP_EMB_NOISE = args.noise
-    HP_LEARNING_RATE = args.learning_rate
-    HP_LEARNING_RATE_MAX = args.learning_rate_max
-    HP_LEARNING_RATE_MIN = args.learning_rate_min
-    HP_DROPOUT = args.dropout
-    OPTIMIZATION_MODEL = args.optimization
-    DYNAMIC_TAGGING = args.dynamic
-
-    START_OF_WORD = "<w>"
-    END_OF_WORD = "</w>"
-
     GOOGLE_SHEETS_CREDENTIAL_FILE = './client_secret.json'
 
-    IFD_FOLDER = './IFD/'
-    train_file = IFD_FOLDER + format(IFD_SET_NUM, '02') + "TM.txt"  # FIX Have to download if missing
-    test_file = IFD_FOLDER + format(IFD_SET_NUM, '02') + "PM.txt"  # FIX Have to download if missing
+    train_file = './IFD/' + format(args.ifd_set, '02') + "TM.txt"  # FIX Have to download if missing
+    test_file = './IFD/' + format(args.ifd_set, '02') + "PM.txt"  # FIX Have to download if missing
 
     train = list(read(train_file))
     test = list(read(test_file))
 
     # Create a neural network tagger and train it
-    tagger = DEEPTagger()
-    tagger.set_trainer(OPTIMIZATION_MODEL)
+    tagger = DEEPTagger(args)
 
     train_and_evaluate_tagger(tagger, train, test)
 
