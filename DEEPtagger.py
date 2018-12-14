@@ -111,8 +111,7 @@ class DEEPTagger():
 
     def dynamic_rep(self, w, cf_init, cb_init):
         if self.word_frequency[w] >= self.hp.words_min_freq:
-            w_index = self.vw.w2i[w]
-            return self.WORDS_LOOKUP[w_index]
+            return self.word_rep(w)
         else:
             return self.char_rep(w, cf_init, cb_init)
 
