@@ -63,8 +63,8 @@ def send_data_to_google_sheet(epoch, evaluation):
             (args.learning_rate_max if args.optimization == 'CyclicalSGD' else ""),
             (args.learning_rate_min if args.optimization == 'CyclicalSGD' else ""),
             args.dynamic,
-            1024 #args.mem, # Dynet memory allocation
-            42 #args.random_seed, # Random seed used for python and Dynet
+            1024, #args.mem, # Dynet memory allocation
+            42, #args.random_seed, # Random seed used for python and Dynet
             args.dropout,
             datetime.fromtimestamp(time()).strftime("%d. %B %Y %I:%M:%S"), # timestamp
             ("X" if epoch == args.epochs else "") # is final epoch
