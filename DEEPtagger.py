@@ -114,7 +114,7 @@ class DEEPTagger():
             return self.char_rep(w, cf_init, cb_init)
 
     def char_rep(self, w, cf_init, cb_init):
-        char_ids = [self.vc.w2i[DEEPTagger.START_OF_WORD]] + [self.vc.w2i[c] if self.vc.w2i[c] else -1 for c in w] + [self.vc.w2i[DEEPTagger.END_OF_WORD]]
+        char_ids = [self.vc.w2i[DEEPTagger.START_OF_WORD]] + [self.vc.w2i[c] if c in self.vc.w2i else -1 for c in w] + [self.vc.w2i[DEEPTagger.END_OF_WORD]]
         char_embs = [self.CHARS_LOOKUP[cid] if cid != -1 else dy.zeros(self.dim.char_lookup) for cid in char_ids]
         fw_exps = cf_init.transduce(char_embs)
         bw_exps = cb_init.transduce(reversed(char_embs))
