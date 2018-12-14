@@ -47,7 +47,7 @@ def send_data_to_google_sheet(epoch, evaluation, loss):
         client = gspread.authorize(creds)
 
         # Open a Google Sheet, by name
-        sheet = client.open("DEEPtagger: Experiments and results").sheet1
+        sheet = client.open("DEEPtagger: Experiments and results").worksheet("Words+Chars")
 
         row = [
             epoch,
