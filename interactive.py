@@ -42,7 +42,7 @@ if __name__ == '__main__':
     ifd += list(read(test_file))
 
     # Create a neural network tagger and train it
-    print(" Þjálpa markara ...", end='\r')
+    print(" Þjálfa markara ...", end='\r')
     tagger = DEEPTagger(args)
 
     tagger.train(args.epochs, ifd)
