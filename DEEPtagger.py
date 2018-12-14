@@ -66,10 +66,6 @@ class DEEPTagger():
         else:
             self.dim = ConcatDimensions()
 
-        if not self.hp.dynamic:
-           self.dim.word_input = self.dim.word_lookup + self.dim.char_output * 2
-
-
     def create_network(self):
         assert self.vw.size(), "Need to build the vocabulary (build_vocab) before creating the network."
 
@@ -79,6 +75,9 @@ class DEEPTagger():
             self.WORDS_LOOKUP.init_from_array(self.word_embeddings)
         else:
             self.WORDS_LOOKUP = self.model.add_lookup_parameters((self.vw.size(), self.dim.word_lookup))
+
+        if not self.hp.dynamic:
+           self.dim.word_input = self.dim.word_lookup + self.dim.char_output * 2
 
         self.WORDS_LOOKUP = self.model.add_lookup_parameters((self.vw.size(), self.dim.word_lookup))
         self.CHARS_LOOKUP = self.model.add_lookup_parameters((self.vc.size(), self.dim.char_lookup))
