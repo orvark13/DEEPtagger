@@ -37,7 +37,7 @@ def update_progress_notice(i, epoch, start_time, epoch_start_time, avg_loss, eva
     )
 
 
-def send_data_to_google_sheet(epoch, evaluation, loss):
+def send_data_to_google_sheet(sheetTitle, epoch, evaluation, loss):
     secret_file = Path(GOOGLE_SHEETS_CREDENTIAL_FILE)
     if secret_file.is_file():
         word_acc, sent_acc, known_acc, unknown_acc = evaluation
@@ -47,7 +47,7 @@ def send_data_to_google_sheet(epoch, evaluation, loss):
         client = gspread.authorize(creds)
 
         # Open a Google Sheet, by name
-        sheet = client.open("DEEPtagger: Experiments and results").worksheet("Words+Chars")
+        sheet = client.open("DEEPtagger: Experiments and results").worksheet(sheetTitle)
 
         row = [
             epoch,
@@ -121,7 +121,8 @@ def train_and_evaluate_tagger(tagger, training_data, test_data):
         # Evaluate
         evaluation = evaluate_tagging(tagger, test_data)
         update_progress_notice(i, ITER + 1, start_time, epoch_start_time, cum_loss / num_tagged, evaluation)
-        send_data_to_google_sheet(ITER + 1, evaluation, cum_loss / num_tagged)
+        if args.worksheet:
+            send_data_to_google_sheet(args.worksheet, ITER + 1, evaluation, cum_loss / num_tagged)
 
     # Show hyperparameters used when we are done
     print("\nHP opt={} dynamic={} wemb_min_freq={} epochs={} wemb_min={} emb_noise={} ".format(args.optimization, args.dynamic, args.words_min_freq, args.epochs, args.words_min_freq, args.noise))
@@ -133,6 +134,7 @@ if __name__ == '__main__':
     #parser.add_argument('--random_seed', type=int, default=42)
     parser.add_argument('--ifd_set', '-i', help="select which IFD set to use (1-10)", type=int, default=2)
     parser.add_argument('--epochs', '-e', help="How many epochs? (20 is default)", type=int, default=20)
+    parser.add_argument('--worksheet', '-ws', help="Worksheet (no default)")
     parser.add_argument('--words_min_freq', '-wmf', help="Minimum frequency of words, else use char embeddings.",
                         type=int, default=3)
     parser.add_argument('--noise', '-n', help="Noise in embeddings", type=float, default=0.1)
