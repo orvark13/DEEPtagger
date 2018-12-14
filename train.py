@@ -144,8 +144,8 @@ if __name__ == '__main__':
 
     GOOGLE_SHEETS_CREDENTIAL_FILE = './client_secret.json'
 
-    train_file = './IFD/' + format(args.ifd_set, '02') + "TM.txt"  # FIX Have to download if missing
-    test_file = './IFD/' + format(args.ifd_set, '02') + "PM.txt"  # FIX Have to download if missing
+    train_file = './IFD/' + format(args.ifd_set, '02') + "TM.txt"
+    test_file = './IFD/' + format(args.ifd_set, '02') + "PM.txt"
 
     train = list(read(train_file))
     test = list(read(test_file))
@@ -154,6 +154,3 @@ if __name__ == '__main__':
     tagger = DEEPTagger(args)
 
     train_and_evaluate_tagger(tagger, train, test)
-
-    #tagger.train(HP_NUM_EPOCHS, train)
-    #print(tagger.tag_sent("Markarinn er tilbúinn í slaginn!".split()))
