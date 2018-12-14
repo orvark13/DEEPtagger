@@ -66,6 +66,9 @@ class DEEPTagger():
         else:
             self.dim = ConcatDimensions()
 
+        if not self.hp.dynamic:
+           self.dim.word_input = self.dim.word_lookup + self.dim.char_output * 2
+
 
     def create_network(self):
         assert self.vw.size(), "Need to build the vocabulary (build_vocab) before creating the network."
@@ -86,8 +89,8 @@ class DEEPTagger():
         self.pO = self.model.add_parameters((self.vt.size(), self.dim.hidden))  # vocab-size, hidden-dim
 
         # word-level LSTMs
-        self.fwdRNN = dy.LSTMBuilder(1, self.dim.word_lookup+self.dim.char_output*2, self.dim.word_output, self.model) # layers, input-dim, output-dim
-        self.bwdRNN = dy.LSTMBuilder(1, self.dim.word_lookup+self.dim.char_output*2, self.dim.word_output, self.model)
+        self.fwdRNN = dy.LSTMBuilder(1, self.dim.word_input, self.dim.word_output, self.model) # layers, input-dim, output-dim
+        self.bwdRNN = dy.LSTMBuilder(1, self.dim.word_input, self.dim.word_output, self.model)
 
         # char-level LSTMs
         self.cFwdRNN = dy.LSTMBuilder(1, self.dim.char_input, self.dim.char_output, self.model)
