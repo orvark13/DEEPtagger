@@ -234,4 +234,6 @@ class DEEPTagger():
                 self.word_embeddings[self.vw.w2i[training_word]] = self.igc_vectors[self.igc_vocab[training_word]]
             except:
                 pass
-        self.word_embeddings = self.word_embeddings * int(self.hp.scale_embeddings)
+
+        if self.hp.scale_embeddings != 1:
+            self.word_embeddings = self.word_embeddings * int(self.hp.scale_embeddings)
