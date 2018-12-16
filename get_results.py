@@ -83,13 +83,41 @@ if secret_file.is_file():
                     headers=['Best epoch','Word acc.','Sent acc.','Known','OOV','Loss']))
 
     if args.plot:
-        y_acc = list([acc_dict[x]/epoch_ctr[x] for x in epoch_ctr])
+        y_acc = list([acc_dict[x]/epoch_ctr[x]*100.0 for x in epoch_ctr])
+        #y_loss = list([loss_dict[x]/epoch_ctr[x] for x in epoch_ctr])
+        y_loss = list([loss_dict[x]/epoch_ctr[x] if loss_dict[x]/epoch_ctr[x] < 0.0055 else 0.0055 for x in epoch_ctr]) # Only graph loss after epoch 40 so the curve is more distinct
         x_epoch = list(acc_dict.keys())
 
-        trace = go.Scatter(
+        trace0 = go.Scatter(
             y=y_acc,
             x=x_epoch,
+            name="Tagging accuracy"
         )
 
-        data = [trace]
-        plotly.offline.plot({'data':data}, auto_open=True)
+        trace1 = go.Scatter(
+            y=y_loss,
+            x=x_epoch,
+            name="Avg. loss",
+            yaxis='y2'
+        )
+
+        data = [trace0, trace1]
+        layout = go.Layout(
+            title='Tagging accuracy and avg. loss',
+            yaxis=dict(
+                title='Accuracy'
+            ),
+            yaxis2=dict(
+                title='Avg. loss',
+                titlefont=dict(
+                    color='rgb(148, 103, 189)'
+                ),
+                tickfont=dict(
+                    color='rgb(148, 103, 189)'
+                ),
+                overlaying='y',
+                side='right'
+            )
+        )
+        fig = go.Figure(data=data, layout=layout)
+        plotly.offline.plot(fig, auto_open=True)
