@@ -12,13 +12,7 @@ import argparse
 GOOGLE_SHEETS_CREDENTIAL_FILE = './client_secret.json'
 secret_file = Path(GOOGLE_SHEETS_CREDENTIAL_FILE)
 
-sheetTitle = 'WC+'
-sheetTitle2= 'W+C+pre-trained init'
-
-
 parser = argparse.ArgumentParser()
-# parser.add_argument('--mem', default=1024)
-# parser.add_argument('--random_seed', type=int, default=42)
 parser.add_argument('--sheet', '-s', help="select which sheet to read", default='WC+')
 parser.add_argument('--plot', '-p', help="Plot graph?",  action="store_true")
 args = parser.parse_args()
