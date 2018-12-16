@@ -63,7 +63,7 @@ if secret_file.is_file():
     best_epoch = 1
     for i in epoch_ctr.keys():
         try:
-            if acc_dict[i]/epoch_ctr[i] > max_val:
+            if epoch_ctr[i] == 10 and acc_dict[i]/epoch_ctr[i] > max_val:
                 max_val = acc_dict[i]/epoch_ctr[i]
                 best_epoch = i
         except:
@@ -73,9 +73,9 @@ if secret_file.is_file():
                      sent_acc_dict[best_epoch]/epoch_ctr[best_epoch],
                      known_dict[best_epoch]/epoch_ctr[best_epoch],
                      unknown_dict[best_epoch]/epoch_ctr[best_epoch],
-                     loss_dict[best_epoch]/epoch_ctr[best_epoch],
-                     epoch_ctr[best_epoch] ]],
-                    headers=['Best epoch','Word acc.','Sent acc.','Known','OOV','Loss','Cnt']))
+                     loss_dict[best_epoch]/epoch_ctr[best_epoch]
+                    ]],
+                    headers=['Best epoch','Word acc.','Sent acc.','Known','OOV','Loss']))
 
     if args.plot:
         y_acc = list([acc_dict[x]/epoch_ctr[x]*100.0 for x in epoch_ctr])
