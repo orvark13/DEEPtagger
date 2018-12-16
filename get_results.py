@@ -84,8 +84,8 @@ if secret_file.is_file():
 
     if args.plot:
         y_acc = list([acc_dict[x]/epoch_ctr[x]*100.0 for x in epoch_ctr])
-        #y_loss = list([loss_dict[x]/epoch_ctr[x] for x in epoch_ctr])
-        y_loss = list([loss_dict[x]/epoch_ctr[x] if loss_dict[x]/epoch_ctr[x] < 0.0055 else 0.0055 for x in epoch_ctr]) # Only graph loss after epoch 40 so the curve is more distinct
+        y_loss = list([loss_dict[x]/epoch_ctr[x] for x in epoch_ctr])
+        #y_loss = list([loss_dict[x]/epoch_ctr[x] if loss_dict[x]/epoch_ctr[x] < 0.0055 else 0.0055 for x in epoch_ctr]) # Only graph loss after epoch 40 so the curve is more distinct
         x_epoch = list(acc_dict.keys())
 
         trace0 = go.Scatter(
@@ -116,6 +116,7 @@ if secret_file.is_file():
                     color='rgb(148, 103, 189)'
                 ),
                 overlaying='y',
+                type='log',
                 side='right'
             )
         )
