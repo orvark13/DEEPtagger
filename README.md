@@ -3,9 +3,7 @@ Part-of-Speech Tagging for Icelandic using a Bidirectional Long Short-Term Memor
 
 [Project report](https://github.com/orvark13/DEEPtagger/raw/master/DEEPtagger-report-steinthor-orvar.pdf)
 
-## Scripts
-
-### Training models
+## Training models
 A bidirectional LSTM model can be trained with the script `train.py`.
 
 ![train](https://user-images.githubusercontent.com/24220374/50121120-a8d95c80-024f-11e9-97a5-b4244b4d0bdd.png)
