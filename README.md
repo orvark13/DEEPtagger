@@ -6,7 +6,7 @@ Part-of-Speech Tagging for Icelandic using a Bidirectional Long Short-Term Memor
 ## Training models
 A bidirectional LSTM model can be trained with the script `train.py`.
 
-![train](https://user-images.githubusercontent.com/24220374/50121120-a8d95c80-024f-11e9-97a5-b4244b4d0bdd.png)
+![training](https://user-images.githubusercontent.com/24220374/50144035-11532880-02a6-11e9-8999-893e7ab94c2d.gif)
 
 Running `./train.py -h` gives information on all possible parameters.
 
